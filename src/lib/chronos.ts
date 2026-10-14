@@ -86,3 +86,52 @@ export function backtest(c: Candle[], signals: SignalPoint[]): Trade[] {
 
 /** HWR (high win-rate): drop scalp labels, keep moderate/massive only. */
 export const hwrFilter = (s: SignalPoint[]) => s.filter((p) => SIGNAL_TIER[p.signal] !== "scalp");
+
+// ---------- Statistics ----------
+export function candleStats(c: Candle[]) {
+  if (c.length === 0) return null;
+  const first = c[0]!, last = c.at(-1)!;
+  const w = c.slice(-20);
+  const atr = w.reduce((a, x, k) => {
+    const pc = k ? w[k - 1]!.close : x.open;
+    return a + Math.max(x.high - x.low, Math.abs(x.high - pc), Math.abs(x.low - pc));
+  }, 0) / w.length;
+  return {
+    last: last.close,
+    changePct: ((last.close - first.open) / first.open) * 100,
+    high: Math.max(...c.map((x) => x.high)),
+    low: Math.min(...c.map((x) => x.low)),
+    atr,
+    atrPct: (atr / last.close) * 100,
+    avgVolume: c.reduce((a, x) => a + x.volume, 0) / c.length,
+    up: c.filter((x) => x.close >= x.open).length,
+    down: c.filter((x) => x.close < x.open).length,
+  };
+}
+
+export type GroupStats = { n: number; wins: number; winRate: number; avgPnl: number; total: number; best: number; worst: number };
+const group = (t: Trade[]): GroupStats => {
+  const p = t.map((x) => x.pnlPct);
+  const wins = p.filter((x) => x > 0).length;
+  const total = p.reduce((a, b) => a + b, 0);
+  return { n: t.length, wins, winRate: t.length ? (wins / t.length) * 100 : 0, avgPnl: t.length ? total / t.length : 0, total, best: t.length ? Math.max(...p) : 0, worst: t.length ? Math.min(...p) : 0 };
+};
+
+/** Overall + per-signal trade stats, plus max drawdown of the cumulative P&L curve (in % points). */
+export function tradeStats(trades: Trade[]) {
+  const bySignal = (Object.keys(SIGNAL_TIER) as Signal[])
+    .map((s) => ({ signal: s, ...group(trades.filter((t) => t.entry.signal === s)) }))
+    .filter((g) => g.n > 0);
+  let eq = 0, peak = 0, maxDd = 0;
+  for (const t of [...trades].sort((a, b) => a.exitTime - b.exitTime)) {
+    eq += t.pnlPct; peak = Math.max(peak, eq); maxDd = Math.max(maxDd, peak - eq);
+  }
+  return { all: group(trades), bySignal, maxDrawdown: maxDd };
+}
+
+export type HistoryRow = { point: SignalPoint; trade: Trade | null };
+/** Every signal with its outcome; `trade` is null while the signal has not hit TP/SL/flip yet. */
+export function signalHistory(signals: SignalPoint[], trades: Trade[]): HistoryRow[] {
+  const byEntry = new Map(trades.map((t) => [t.entry.time, t]));
+  return signals.map((point) => ({ point, trade: byEntry.get(point.time) ?? null })).reverse();
+}

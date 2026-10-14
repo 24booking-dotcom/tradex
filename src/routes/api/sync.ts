@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchCandles, SEC } from "@/lib/providers";
+import { sendPendingAlerts } from "@/lib/alerts";
 import { getDb, persistSignals } from "@/lib/store";
 import { SYMBOLS } from "@/lib/symbols";
 
@@ -28,7 +29,8 @@ export const Route = createFileRoute("/api/sync")({
             }),
           ),
         );
-        return json(report);
+        const alerts = await sendPendingAlerts(db);
+        return json({ ...report, alerts });
       },
     },
   },

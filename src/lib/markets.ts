@@ -12,6 +12,12 @@ export const MARKETS: Market[] = [
   { id: "NAS100", label: "Nasdaq 100", note: "Futuros NQ" },
   { id: "SPX", label: "S&P 500", note: "Futuros ES" },
   { id: "RUT", label: "Russell 2000", note: "Futuros RTY" },
+  { id: "XAU", label: "Oro", note: "Futuros GC" },
+  { id: "WTI", label: "Petróleo WTI", note: "Futuros CL" },
+  { id: "BRENT", label: "Petróleo Brent", note: "Futuros BZ" },
+  { id: "EURUSD", label: "EUR/USD", note: "Forex · sin volumen" },
+  { id: "GBPUSD", label: "GBP/USD", note: "Forex · sin volumen" },
+  { id: "USDJPY", label: "USD/JPY", note: "Forex · sin volumen" },
 ];
 export const INTERVALS = ["1m", "5m", "15m", "1h", "4h"] as const;
 

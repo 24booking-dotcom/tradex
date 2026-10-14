@@ -1,6 +1,7 @@
 // Persistent signal history (Postgres). Optional: without DATABASE_URL the app still works,
 // the history is then only the last ~500 candles computed on the fly.
 import { analyze, backtest, SIGNAL_TIER, tradeLevels, type Candle, type Signal } from "./chronos";
+import { sendPendingAlerts } from "./alerts";
 import { SEC } from "./providers";
 
 export type Db = { query(text: string, params?: unknown[]): Promise<Record<string, unknown>[]> };
@@ -11,11 +12,13 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS signals (
   tp double precision NOT NULL, sl double precision NOT NULL,
   exit_time bigint, exit_price double precision, reason text, pnl_pct double precision,
   created_at timestamptz NOT NULL DEFAULT now(),
+  alerted_at timestamptz,
   PRIMARY KEY (market, interval, time)
 )`;
+const MIGRATE = `ALTER TABLE signals ADD COLUMN IF NOT EXISTS alerted_at timestamptz`;
 
 let neonDb: Db | null | undefined;
-let ready: Promise<unknown> | undefined;
+const ready = new WeakMap<Db, Promise<unknown>>();
 
 /** Neon/Vercel Postgres over HTTP. Returns null when DATABASE_URL is not configured. */
 export async function getDb(): Promise<Db | null> {
@@ -27,7 +30,18 @@ export async function getDb(): Promise<Db | null> {
   return (neonDb = { query: (t, p) => sql.query(t, p ?? []) as Promise<Record<string, unknown>[]> });
 }
 
-export const ensureSchema = (db: Db) => (ready ??= db.query(SCHEMA));
+export function ensureSchema(db: Db) {
+  let p = ready.get(db);
+  if (!p) {
+    p = (async () => {
+      await db.query(SCHEMA);
+      await db.query(MIGRATE); // tables created before alerts existed
+    })();
+    ready.set(db, p);
+    p.catch(() => ready.delete(db)); // retry on the next call if setup failed
+  }
+  return p;
+}
 
 /** Signals + outcomes computed on CLOSED candles only, so a forming candle never writes an unstable signal. */
 export async function persistSignals(db: Db, market: string, interval: string, candles: Candle[], nowSec = Date.now() / 1000) {
@@ -85,6 +99,9 @@ export async function persistThrottled(market: string, interval: string, candles
   const db = await getDb();
   if (!db) return;
   lastWrite.set(key, Date.now());
-  try { await persistSignals(db, market, interval, candles); }
+  try {
+    await persistSignals(db, market, interval, candles);
+    await sendPendingAlerts(db);
+  }
   catch (e) { lastWrite.delete(key); console.error("persistSignals failed", e); }
 }

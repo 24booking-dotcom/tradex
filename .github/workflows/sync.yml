@@ -1,0 +1,19 @@
+# Calls the app every 5 minutes so signals are recorded and e-mail alerts go out even when nobody has the app open.
+# Needs repository secrets: SYNC_URL (e.g. https://your-app.vercel.app/api/sync) and CRON_SECRET (same value as in Vercel).
+name: sync-signals
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: ${{ vars.SYNC_ENABLED != 'false' }}
+    steps:
+      - name: Call /api/sync
+        env:
+          SYNC_URL: ${{ secrets.SYNC_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SYNC_URL" || { echo "SYNC_URL secret is not set"; exit 1; }
+          curl -fsS --max-time 55 -H "Authorization: Bearer $CRON_SECRET" "$SYNC_URL?intervals=5m,15m,1h,4h"

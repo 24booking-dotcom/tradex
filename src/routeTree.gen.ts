@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiCandlesRouteImport } from './routes/api/candles'
+import { Route as ApiHistoryRouteImport } from './routes/api/history'
+import { Route as ApiSyncRouteImport } from './routes/api/sync'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +24,49 @@ const ApiCandlesRoute = ApiCandlesRouteImport.update({
   path: '/api/candles',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHistoryRoute = ApiHistoryRouteImport.update({
+  id: '/api/history',
+  path: '/api/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSyncRoute = ApiSyncRouteImport.update({
+  id: '/api/sync',
+  path: '/api/sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/candles': typeof ApiCandlesRoute
+  '/api/history': typeof ApiHistoryRoute
+  '/api/sync': typeof ApiSyncRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/candles': typeof ApiCandlesRoute
+  '/api/history': typeof ApiHistoryRoute
+  '/api/sync': typeof ApiSyncRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/candles': typeof ApiCandlesRoute
+  '/api/history': typeof ApiHistoryRoute
+  '/api/sync': typeof ApiSyncRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/candles'
+  fullPaths: '/' | '/api/candles' | '/api/history' | '/api/sync'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/candles'
-  id: '__root__' | '/' | '/api/candles'
+  to: '/' | '/api/candles' | '/api/history' | '/api/sync'
+  id: '__root__' | '/' | '/api/candles' | '/api/history' | '/api/sync'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiCandlesRoute: typeof ApiCandlesRoute
+  ApiHistoryRoute: typeof ApiHistoryRoute
+  ApiSyncRoute: typeof ApiSyncRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +85,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCandlesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/history': {
+      id: '/api/history'
+      path: '/api/history'
+      fullPath: '/api/history'
+      preLoaderRoute: typeof ApiHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/sync': {
+      id: '/api/sync'
+      path: '/api/sync'
+      fullPath: '/api/sync'
+      preLoaderRoute: typeof ApiSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiCandlesRoute: ApiCandlesRoute,
+  ApiHistoryRoute: ApiHistoryRoute,
+  ApiSyncRoute: ApiSyncRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

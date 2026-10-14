@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { analyze, backtest, candleStats, hwrFilter, isPostMidnight, signalHistory, SIGNAL_TIER, tradeStats, type Signal } from "@/lib/chronos";
-import { INTERVALS, MARKETS, loadCandles, type CandleData } from "@/lib/markets";
+import { analyze, backtest, candleStats, hwrFilter, isPostMidnight, signalHistory, SIGNAL_TIER, tradeStats, type HistoryRow, type Signal, type Trade } from "@/lib/chronos";
+import { INTERVALS, MARKETS, loadCandles, loadStoredHistory, type CandleData, type StoredHistory } from "@/lib/markets";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -32,6 +32,7 @@ function Index() {
   const lastAlert = useRef<number>(0);
   const [data, setData] = useState<CandleData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stored, setStored] = useState<StoredHistory | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +43,14 @@ function Index() {
       .catch((e: Error) => { if (on) setError(e.message); });
     run();
     const t = setInterval(run, 15000);
+    return () => { on = false; clearInterval(t); };
+  }, [market, interval]);
+
+  useEffect(() => {
+    let on = true;
+    const run = () => loadStoredHistory(market.id, interval).then((h) => on && setStored(h)).catch(() => on && setStored(null));
+    setStored(null); run();
+    const t = setInterval(run, 60000);
     return () => { on = false; clearInterval(t); };
   }, [market, interval]);
 
@@ -111,10 +120,26 @@ function Index() {
   const lastRatio = result?.ratios.at(-1) ?? NaN;
   const lastMom = result?.momentum.at(-1) ?? 0;
   const regime = isNaN(lastRatio) ? "—" : lastRatio < 1 ? "COMPRESIÓN (masivo en carga)" : lastRatio < 1.5 ? "TENDENCIA (moderado)" : "SOBREEXTENSIÓN (scalping)";
-  const trades = result?.trades ?? [];
+  // Saved history (Postgres) when configured; otherwise what can be computed from the loaded candles.
+  const view = useMemo(() => {
+    if (stored?.configured && stored.rows.length > 0) {
+      const rows: HistoryRow[] = stored.rows
+        .filter((r) => mode !== "hwr" || r.tier !== "scalp")
+        .map((r) => {
+          const point = { time: r.time, signal: r.signal, price: r.price, ratio: r.ratio, atr: r.atr };
+          const trade: Trade | null = r.exitTime != null && r.exitPrice != null && r.reason && r.pnlPct != null
+            ? { entry: point, exitTime: r.exitTime, exitPrice: r.exitPrice, pnlPct: r.pnlPct, reason: r.reason, sl: r.sl, tp: r.tp, tps: [] }
+            : null;
+          return { point, trade };
+        });
+      return { history: rows, trades: rows.flatMap((r) => (r.trade ? [r.trade] : [])), saved: true };
+    }
+    const trades = result?.trades ?? [];
+    return { history: signalHistory(result?.signals ?? [], trades), trades, saved: false };
+  }, [stored, result, mode]);
+  const { history, trades } = view;
   const ts = useMemo(() => tradeStats(trades), [trades]);
   const cs = useMemo(() => (data ? candleStats(data.candles) : null), [data]);
-  const history = useMemo(() => signalHistory(result?.signals ?? [], trades), [result, trades]);
   const recent = history.slice(0, 8);
   const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 });
   const pct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
@@ -190,7 +215,7 @@ function Index() {
             ) : <p className="text-sm text-muted-foreground">Sin datos.</p>}
           </div>
           <div className="rounded-lg border border-border bg-card p-4">
-            <h2 className="mb-2 font-mono text-xs text-muted-foreground">BACKTEST</h2>
+            <h2 className="mb-2 font-mono text-xs text-muted-foreground">BACKTEST{view.saved ? " · HISTÓRICO" : ""}</h2>
             <dl className="grid grid-cols-2 gap-y-1 font-mono text-xs">
               <dt className="text-muted-foreground">Operaciones</dt><dd className="text-right">{ts.all.n}</dd>
               <dt className="text-muted-foreground">Acierto</dt><dd className="text-right">{ts.all.winRate.toFixed(0)}%</dd>
@@ -247,7 +272,9 @@ function Index() {
       <section className="rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-2 font-mono text-xs">
           <h2>HISTORIAL DE SEÑALES · {market.id} · {interval}</h2>
-          <span className="text-muted-foreground">{history.length} señales</span>
+          <span className="text-muted-foreground">
+            {history.length} señales · {view.saved ? "guardado en base de datos" : stored?.configured === false ? "solo últimas 500 velas (sin base de datos)" : "últimas 500 velas"}
+          </span>
         </div>
         <div className="max-h-96 overflow-auto">
           <table className="w-full font-mono text-xs">

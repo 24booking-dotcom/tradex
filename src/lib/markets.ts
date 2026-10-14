@@ -1,4 +1,5 @@
 import type { Candle } from "./chronos";
+import type { StoredSignal } from "./store";
 
 // Every market is served by real exchange / futures data through /api/candles. There is no simulation.
 export type Market = { id: string; label: string; note?: string };
@@ -21,4 +22,12 @@ export async function loadCandles(m: Market, interval: string): Promise<CandleDa
   const body = (await r.json()) as CandleData & { error?: string };
   if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
   return body;
+}
+
+export type StoredHistory = { configured: boolean; rows: StoredSignal[] };
+
+export async function loadStoredHistory(marketId: string, interval: string): Promise<StoredHistory> {
+  const r = await fetch(`/api/history?market=${marketId}&interval=${interval}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()) as StoredHistory;
 }

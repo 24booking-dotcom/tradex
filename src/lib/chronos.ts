@@ -61,16 +61,24 @@ const TP_MULT = { scalp: 1, moderate: 2, massive: 3 } as const;
 export const SL_MULT = 1.5;
 const isLong = (s: Signal) => s === "BUY" || s === "LONG" || s === "BULLZ";
 
+/** TP / SL price levels for a signal (TP distance scales with the signal tier, SL is 1.5 ATR). */
+export function tradeLevels(e: SignalPoint) {
+  const dir = isLong(e.signal) ? 1 : -1;
+  const mult = TP_MULT[SIGNAL_TIER[e.signal]];
+  return {
+    tp: e.price + dir * e.atr * mult,
+    tps: [1, 2, 3, 4].map((k) => e.price + dir * e.atr * k * (mult / 2)),
+    sl: e.price - dir * e.atr * SL_MULT,
+  };
+}
+
 /** Each signal opens a trade; it closes at TP (ATR x tier), SL (1.5 ATR) or when an opposite label flips it. */
 export function backtest(c: Candle[], signals: SignalPoint[]): Trade[] {
   const trades: Trade[] = [];
   const idx = new Map(c.map((x, i) => [x.time, i]));
   for (let n = 0; n < signals.length; n++) {
     const e = signals[n]!; const long = isLong(e.signal);
-    const tp = e.price + (long ? 1 : -1) * e.atr * TP_MULT[SIGNAL_TIER[e.signal]];
-    const dir = long ? 1 : -1;
-    const tps = [1, 2, 3, 4].map((k) => e.price + dir * e.atr * k * (TP_MULT[SIGNAL_TIER[e.signal]] / 2));
-    const sl = e.price - (long ? 1 : -1) * e.atr * SL_MULT;
+    const { tp, tps, sl } = tradeLevels(e);
     const next = signals.slice(n + 1).find((s) => isLong(s.signal) !== long);
     let out: Trade | null = null;
     for (let i = (idx.get(e.time) ?? 0) + 1; i < c.length && !out; i++) {

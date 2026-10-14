@@ -1,18 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchCandles } from "@/lib/providers";
+import { persistThrottled } from "@/lib/store";
+import { SYMBOLS } from "@/lib/symbols";
 
 // Server-side proxy: avoids browser CORS/geo-blocks and keeps provider logic in one place.
-const SYMBOLS: Record<string, { kind: "crypto" | "index"; symbol: string }> = {
-  BTC: { kind: "crypto", symbol: "BTCUSDT" },
-  ETH: { kind: "crypto", symbol: "ETHUSDT" },
-  XRP: { kind: "crypto", symbol: "XRPUSDT" },
-  BNB: { kind: "crypto", symbol: "BNBUSDT" },
-  US30: { kind: "index", symbol: "YM=F" },
-  NAS100: { kind: "index", symbol: "NQ=F" },
-  SPX: { kind: "index", symbol: "ES=F" },
-  RUT: { kind: "index", symbol: "RTY=F" },
-};
-
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -27,7 +18,10 @@ export const Route = createFileRoute("/api/candles")({
         const m = SYMBOLS[u.searchParams.get("market") ?? ""];
         if (!m) return json({ error: "unknown market" }, 400);
         try {
-          return json(await fetchCandles(m.kind, m.symbol, u.searchParams.get("interval") ?? "15m"));
+          const interval = u.searchParams.get("interval") ?? "15m";
+          const data = await fetchCandles(m.kind, m.symbol, interval);
+          await persistThrottled(u.searchParams.get("market")!, interval, data.candles); // never throws
+          return json(data);
         } catch (e) {
           return json({ error: e instanceof Error ? e.message : String(e) }, 502);
         }

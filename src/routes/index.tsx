@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyze, backtest, hwrFilter, isPostMidnight, SIGNAL_TIER, type Candle, type Signal } from "@/lib/chronos";
-import { INTERVALS, MARKETS, loadCandles } from "@/lib/markets";
+import { INTERVALS, MARKETS, loadCandles, type CandleData } from "@/lib/markets";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -30,12 +30,16 @@ function Index() {
   const [mode, setMode] = useState<"tpsl" | "hwr" | "buysell">("tpsl");
   const [alerts, setAlerts] = useState(false);
   const lastAlert = useRef<number>(0);
-  const [data, setData] = useState<{ candles: Candle[]; live: boolean } | null>(null);
+  const [data, setData] = useState<CandleData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let on = true;
-    const run = () => loadCandles(market, interval).then((d) => on && setData(d));
+    setData(null); setError(null);
+    const run = () => loadCandles(market, interval)
+      .then((d) => { if (on) { setData(d); setError(null); } })
+      .catch((e: Error) => { if (on) setError(e.message); });
     run();
     const t = setInterval(run, 15000);
     return () => { on = false; clearInterval(t); };
@@ -149,9 +153,12 @@ function Index() {
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between border-b border-border px-4 py-2 font-mono text-xs">
-            <span>{market.label} · {interval}</span>
-            <span className={data?.live ? "text-bull" : "text-accent"}>{data ? (data.live ? "● EN VIVO" : "● SIMULADO") : "cargando…"}</span>
+            <span>{market.label}{market.note ? ` (${market.note})` : ""} · {interval}</span>
+            <span className={error ? "text-bear" : "text-bull"}>
+              {error ? "● SIN CONEXIÓN" : data ? `● DATOS REALES · ${data.source}` : "cargando…"}
+            </span>
           </div>
+          {error && <p className="border-b border-border px-4 py-2 font-mono text-xs text-bear">No se pudo obtener datos reales: {error}. Reintentando…</p>}
           <div ref={box} className="h-[520px]" />
         </section>
 
